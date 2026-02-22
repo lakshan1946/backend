@@ -80,23 +80,12 @@
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/x-www-form-urlencoded"
+                "value": "application/json"
               }
             ],
             "body": {
-              "mode": "urlencoded",
-              "urlencoded": [
-                {
-                  "key": "username",
-                  "value": "test@example.com",
-                  "type": "text"
-                },
-                {
-                  "key": "password",
-                  "value": "testpassword123",
-                  "type": "text"
-                }
-              ]
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"testpassword123\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/auth/login",
