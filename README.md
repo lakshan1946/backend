@@ -169,6 +169,8 @@ MODEL_PATH=./models/best_model.pth
 
 ## 🧪 Testing
 
+### Automated Tests
+
 ```bash
 # Install test dependencies
 pip install pytest pytest-asyncio httpx
@@ -179,6 +181,33 @@ pytest
 # With coverage
 pytest --cov=app tests/
 ```
+
+### Manual Testing with Postman
+
+Import the Postman collection and environment for easy API testing:
+
+1. **Import Collection:**
+   - Open Postman
+   - Click "Import" → Select `postman_collection.json`
+   - This includes all API endpoints with sample requests
+
+2. **Import Environment:**
+   - Click "Environments" → "Import"
+   - Select `postman_environment.json`
+   - Set as active environment
+
+3. **Test Flow:**
+   - **Register/Login:** Run "Register User" or "Login" to get access token (automatically saved)
+   - **Upload Files:** Use "Upload MRI Files" with your .nii/.nii.gz files
+   - **Check Job:** Use "Get Job by ID" to monitor preprocessing progress
+   - **Run Inference:** Once preprocessing is complete, use "Run Super-Resolution Inference"
+   - **Download Results:** Access processed files via the stored URLs
+
+**Files:**
+- `postman_collection.json` - Complete API endpoint collection
+- `postman_environment.json` - Local development environment
+
+**Note:** The collection automatically extracts and stores the `access_token` and `job_id` from responses.
 
 ## 📊 Monitoring Celery
 
