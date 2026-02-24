@@ -8,15 +8,15 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models import User, JobStatus
 from app.schemas import JobResponse
-from app.auth import get_current_user
+from app.core.auth import get_current_user
 from app.services.job_service import JobService
 from app.tasks.preprocess_tasks import preprocess_pipeline_task
 from app.tasks.inference_tasks import inference_task
 from app.utils.exceptions import InvalidJobStateException
-from app.constants import APIEndpoints, ErrorMessages, EndpointDocs
+from app.core.constants import APIEndpoints, ErrorMessages, EndpointDocs
 
 router = APIRouter(prefix=APIEndpoints.JOBS_PREFIX, tags=["Jobs"])
 

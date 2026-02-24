@@ -9,9 +9,9 @@ sys.path.insert(0, str(pipeline_path))
 
 from celery import shared_task
 from sqlalchemy.orm import Session
-from app.database import SessionLocal
+from app.core.database import SessionLocal
 from app.models import Job, JobStatus
-from app.config import settings
+from app.core.config import settings
 
 # Import the existing MRI preprocessing pipeline
 try:

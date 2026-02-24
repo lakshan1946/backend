@@ -7,8 +7,8 @@ from fastapi import UploadFile
 
 from app.models import File, User
 from app.repositories.file_repository import FileRepository
-from app.config import settings
-from app.constants import FileConstants, ErrorMessages
+from app.core.config import settings
+from app.core.constants import FileConstants, ErrorMessages
 from app.utils.file_utils import FileHandler
 from app.utils.validators import FileValidator
 from app.utils.exceptions import ValidationException

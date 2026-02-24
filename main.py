@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.config import settings
-from app.database import engine, Base
+from app.core.config import settings
+from app.core.database import engine, Base
 from app.api.routes import auth, preprocess, jobs, inference
 from app.middleware import add_exception_handlers
-from app.constants import APIEndpoints
+from app.core.constants import APIEndpoints
 import os
 
 # Create database tables

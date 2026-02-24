@@ -1,10 +1,9 @@
 """Dependency injection helpers for services."""
 
-from typing import Callable
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.core.database import get_db
 from app.services.auth_service import AuthService
 from app.services.job_service import JobService
 from app.services.file_service import FileService

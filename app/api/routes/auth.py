@@ -7,12 +7,12 @@ Follows SOLID principles - Single Responsibility (routing only).
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserResponse, UserLogin, Token
-from app.auth import get_current_user
+from app.core.auth import get_current_user
 from app.services.auth_service import AuthService
-from app.constants import APIEndpoints, EndpointDocs
+from app.core.constants import APIEndpoints, EndpointDocs
 
 router = APIRouter(prefix=APIEndpoints.AUTH_PREFIX, tags=["Authentication"])
 

@@ -8,13 +8,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models import User
 from app.schemas import InferenceRequest
-from app.auth import get_current_user
+from app.core.auth import get_current_user
 from app.services.job_service import JobService
 from app.tasks.inference_tasks import inference_task
-from app.constants import APIEndpoints, HTTPStatusMessages, JobConstants, EndpointDocs
+from app.core.constants import APIEndpoints, HTTPStatusMessages, JobConstants, EndpointDocs
 
 router = APIRouter(prefix=APIEndpoints.INFERENCE_PREFIX, tags=["Inference"])
 

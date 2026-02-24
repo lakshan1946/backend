@@ -5,7 +5,7 @@ import uuid
 from typing import Tuple
 from fastapi import UploadFile
 import aiofiles
-from app.constants import FileConstants
+from app.core.constants import FileConstants
 
 
 class FileHandler:

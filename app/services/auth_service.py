@@ -6,9 +6,9 @@ from typing import Tuple
 
 from app.models import User
 from app.schemas import UserCreate, UserLogin
-from app.auth import get_password_hash, verify_password, create_access_token
+from app.core.auth import get_password_hash, verify_password, create_access_token
 from app.repositories.user_repository import UserRepository
-from app.constants import ErrorMessages
+from app.core.constants import ErrorMessages
 from app.utils.exceptions import (
     ResourceAlreadyExistsException,
     UnauthorizedException,

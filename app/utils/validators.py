@@ -2,7 +2,7 @@
 
 from typing import List
 from fastapi import UploadFile
-from app.constants import FileConstants
+from app.core.constants import FileConstants
 from app.utils.exceptions import InvalidFileTypeException
 
 
