@@ -1,63 +1,75 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+"""
+Inference routes (Controller layer).
+Handles HTTP requests and delegates business logic to services.
+Follows SOLID principles - Single Responsibility (routing only).
+"""
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from typing import Dict, Any
+
 from app.database import get_db
-from app.models import User, Job, JobStatus
+from app.models import User
 from app.schemas import InferenceRequest
 from app.auth import get_current_user
+from app.services.job_service import JobService
 from app.tasks.inference_tasks import inference_task
-import uuid
+from app.constants import APIEndpoints, HTTPStatusMessages, JobConstants, EndpointDocs
 
-router = APIRouter(prefix="/infer", tags=["Inference"])
+router = APIRouter(prefix=APIEndpoints.INFERENCE_PREFIX, tags=["Inference"])
 
 
-@router.post("")
+@router.post(
+    APIEndpoints.INFERENCE_RUN,
+    summary=EndpointDocs.INFERENCE_RUN_SUMMARY,
+    description=EndpointDocs.INFERENCE_RUN_DESC
+)
 async def run_inference(
     request: InferenceRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
-    """Run super-resolution inference on a low-resolution file."""
-    # Verify the LR file/job belongs to the user
-    lr_job = db.query(Job).filter(
-        Job.id == request.lr_file_id,
-        Job.user_id == current_user.id
-    ).first()
+) -> Dict[str, Any]:
+    """
+    Run super-resolution inference on a low-resolution file.
     
-    if not lr_job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="LR file/job not found"
-        )
+    Args:
+        request: Inference request with LR file ID
+        db: Database session
+        current_user: Authenticated user
+        
+    Returns:
+        Inference job information
+        
+    Raises:
+        ResourceNotFoundException: If LR file/job not found
+        InvalidJobStateException: If preprocessing not completed
+        ForbiddenException: If user doesn't own the job
+    """
+    job_service = JobService(db)
     
-    if lr_job.status != JobStatus.COMPLETED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Preprocessing must be completed before running inference"
-        )
-    
-    # Create inference job
-    inference_job_id = str(uuid.uuid4())
-    inference_job = Job(
-        id=inference_job_id,
-        user_id=current_user.id,
-        status=JobStatus.PENDING,
-        job_type="inference",
-        progress=0,
-        input_files=lr_job.output_files  # Use preprocessed outputs as input
+    # Validate the LR file/job belongs to user and is ready for inference
+    lr_job = job_service.validate_job_for_inference(
+        request.lr_file_id,
+        current_user
     )
     
-    db.add(inference_job)
-    db.commit()
+    # Create inference job
+    inference_job = job_service.create_job(
+        user=current_user,
+        job_type=JobConstants.JOB_TYPE_INFERENCE,
+        input_files=lr_job.output_files
+    )
     
-    # Trigger Celery task
-    inference_task.apply_async(
-        args=[inference_job_id, lr_job.output_files],
-        task_id=inference_job_id,
-        queue='inference'
+    # Trigger Celery inference task
+    job_service.trigger_celery_task(
+        job=inference_job,
+        task_function=inference_task,
+        args=[inference_job.id, lr_job.output_files],
+        queue=JobConstants.QUEUE_INFERENCE
     )
     
     return {
-        "inference_job_id": inference_job_id,
+        "inference_job_id": inference_job.id,
         "status": "pending",
-        "message": "Inference task started"
+        "message": HTTPStatusMessages.INFERENCE_STARTED
     }
