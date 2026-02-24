@@ -49,7 +49,7 @@ class JobResponse(BaseModel):
     job_type: str
     error_message: Optional[str] = None
     input_files: Optional[List[str]] = None
-    output_files: Optional[List[str]] = None
+    output_files: Optional[List[Dict[str, str]]] = None
     lr_file_url: Optional[str] = None
     hr_file_url: Optional[str] = None
     metrics: Optional[Dict[str, float]] = None
@@ -66,7 +66,7 @@ class JobUpdate(BaseModel):
     status: Optional[JobStatus] = None
     progress: Optional[int] = None
     error_message: Optional[str] = None
-    output_files: Optional[List[str]] = None
+    output_files: Optional[List[Dict[str, str]]] = None
     lr_file_url: Optional[str] = None
     hr_file_url: Optional[str] = None
     metrics: Optional[Dict[str, float]] = None

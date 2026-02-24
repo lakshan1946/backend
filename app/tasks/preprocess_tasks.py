@@ -140,8 +140,9 @@ def preprocess_pipeline_task(self, job_id: str, file_paths: list):
             # Step 5: Generate LR image (degradation)
             update_job_status(job_id, JobStatus.PROCESSING, progress=base_progress + 80)
             print("Generating LR image...")
-            from src.degradation import degrade_image
-            lr_img = degrade_image(normalized_img, scale_factor=2)
+            from src.degradation import DegradationSimulator
+            degrader = DegradationSimulator(normalized_img)
+            lr_img = degrader.simulate_in_plane_resolution(downsample_factor=2)
             
             lr_filename = f"lr_{idx}.nii.gz"
             lr_path = os.path.join(output_dir, lr_filename)
