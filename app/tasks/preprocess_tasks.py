@@ -16,12 +16,18 @@ from app.config import settings
 # Import the existing MRI preprocessing pipeline
 try:
     from src.pipeline import MRIPreprocessingPipeline
-    from src.brain_extraction import extract_brain
-    from src.normalize import normalize_intensity
+    from src.brain_extraction import BrainExtractor
+    from src.normalize import IntensityNormalizer
     import ants
+    
+    # Initialize reusable instances (reuse across tasks)
+    _brain_extractor = None
+    _intensity_normalizer = None
 except ImportError as e:
     print(f"Warning: Could not import MRI pipeline modules: {e}")
     MRIPreprocessingPipeline = None
+    _brain_extractor = None
+    _intensity_normalizer = None
 
 
 def update_job_status(
@@ -61,6 +67,22 @@ def update_job_status(
         db.close()
 
 
+def get_brain_extractor():
+    """Get or create brain extractor instance."""
+    global _brain_extractor
+    if _brain_extractor is None and BrainExtractor is not None:
+        _brain_extractor = BrainExtractor(device='cpu', disable_tta=True, verbose=True)
+    return _brain_extractor
+
+
+def get_intensity_normalizer():
+    """Get or create intensity normalizer instance."""
+    global _intensity_normalizer
+    if _intensity_normalizer is None and IntensityNormalizer is not None:
+        _intensity_normalizer = IntensityNormalizer(method='whitestripe', modality='T1')
+    return _intensity_normalizer
+
+
 @shared_task(bind=True, name="app.tasks.preprocess_tasks.preprocess_pipeline_task")
 def preprocess_pipeline_task(self, job_id: str, file_paths: list):
     """
@@ -95,7 +117,8 @@ def preprocess_pipeline_task(self, job_id: str, file_paths: list):
             # Step 1: Brain extraction (10% progress per step)
             update_job_status(job_id, JobStatus.PROCESSING, progress=base_progress + 10)
             print("Extracting brain...")
-            brain_img = extract_brain(img)
+            extractor = get_brain_extractor()
+            brain_img = extractor.extract_brain(img) if extractor else img
             
             # Step 2: Bias correction
             update_job_status(job_id, JobStatus.PROCESSING, progress=base_progress + 30)
@@ -105,7 +128,8 @@ def preprocess_pipeline_task(self, job_id: str, file_paths: list):
             # Step 3: Normalization
             update_job_status(job_id, JobStatus.PROCESSING, progress=base_progress + 50)
             print("Normalizing intensity...")
-            normalized_img = normalize_intensity(corrected_img)
+            normalizer = get_intensity_normalizer()
+            normalized_img = normalizer.apply(corrected_img) if normalizer else corrected_img
             
             # Step 4: Save HR image
             update_job_status(job_id, JobStatus.PROCESSING, progress=base_progress + 70)
