@@ -52,7 +52,8 @@ async def run_inference(
     # Trigger Celery task
     inference_task.apply_async(
         args=[inference_job_id, lr_job.output_files],
-        task_id=inference_job_id
+        task_id=inference_job_id,
+        queue='inference'
     )
     
     return {

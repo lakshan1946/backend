@@ -105,7 +105,8 @@ async def upload_and_preprocess(
     # Trigger Celery task
     preprocess_pipeline_task.apply_async(
         args=[job_id, file_paths],
-        task_id=job_id
+        task_id=job_id,
+        queue='preprocessing'
     )
     
     return {
