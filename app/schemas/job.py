@@ -52,6 +52,15 @@ class JobResponse(BaseModel):
         return len(self.input_files)
 
 
+class JobListResponse(BaseModel):
+    """Schema for paginated job list response."""
+    items: List[JobResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
 class JobUpdate(BaseModel):
     """Schema for updating a job."""
     status: Optional[JobStatus] = None

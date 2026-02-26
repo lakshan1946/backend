@@ -4,13 +4,13 @@ Handles HTTP requests and delegates business logic to JobService.
 Follows SOLID principles - Single Responsibility (routing only).
 """
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 
 from app.core.database import get_db
 from app.models import User, JobStatus
-from app.schemas import JobResponse
+from app.schemas import JobResponse, JobListResponse
 from app.core.auth import get_current_user
 from app.services.job_service import JobService
 from app.tasks.preprocess_tasks import preprocess_pipeline_task
@@ -23,14 +23,16 @@ router = APIRouter(prefix=APIEndpoints.JOBS_PREFIX, tags=["Jobs"])
 
 @router.get(
     APIEndpoints.JOBS_LIST,
-    response_model=List[JobResponse],
+    response_model=JobListResponse,
     summary=EndpointDocs.JOBS_LIST_SUMMARY,
     description=EndpointDocs.JOBS_LIST_DESC
 )
 async def list_jobs(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> List[JobResponse]:
+    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    size: int = Query(20, ge=1, le=100, description="Page size")
+) -> JobListResponse:
     """
     List all jobs for current user.
     
@@ -42,8 +44,8 @@ async def list_jobs(
         List of jobs
     """
     job_service = JobService(db)
-    jobs = job_service.get_user_jobs(current_user)
-    return jobs
+    result = job_service.get_user_jobs_paginated(current_user, page, size)
+    return JobListResponse(**result)
 
 
 @router.get(

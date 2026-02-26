@@ -2,6 +2,7 @@
 
 import uuid
 from typing import List, Optional, Dict, Any
+import math
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -77,6 +78,32 @@ class JobService:
         """
         try:
             return self.job_repository.get_by_user_id(user.id)
+        except Exception as e:
+            raise Exception(f"Failed to get jobs: {str(e)}")
+
+    def get_user_jobs_paginated(self, user: User, page: int, size: int) -> Dict[str, Any]:
+        """
+        Get paginated jobs for a user.
+
+        Args:
+            user: User to get jobs for
+            page: Page number (1-based)
+            size: Page size
+
+        Returns:
+            Dict with items, total, page, size, pages
+        """
+        try:
+            offset = (page - 1) * size
+            jobs, total = self.job_repository.get_by_user_id_paginated(user.id, offset, size)
+            pages = math.ceil(total / size) if size > 0 else 0
+            return {
+                "items": jobs,
+                "total": total,
+                "page": page,
+                "size": size,
+                "pages": pages,
+            }
         except Exception as e:
             raise Exception(f"Failed to get jobs: {str(e)}")
     

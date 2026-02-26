@@ -34,6 +34,29 @@ class JobRepository(BaseRepository[Job]):
             .order_by(Job.created_at.desc())
             .all()
         )
+
+    def get_by_user_id_paginated(self, user_id: str, offset: int, limit: int) -> tuple[List[Job], int]:
+        """
+        Get paginated jobs for a user.
+
+        Args:
+            user_id: User identifier
+            offset: Number of records to skip
+            limit: Maximum number of records to return
+
+        Returns:
+            Tuple of (jobs, total_count)
+        """
+        base_query = self.db.query(Job).filter(Job.user_id == user_id)
+        total = base_query.count()
+        jobs = (
+            base_query
+            .order_by(Job.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return jobs, total
     
     def get_by_user_and_id(self, user_id: str, job_id: str) -> Optional[Job]:
         """
