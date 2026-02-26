@@ -1,6 +1,7 @@
 """Job model."""
 
 from sqlalchemy import Column, String, Integer, DateTime, Enum, JSON, ForeignKey
+from typing import Optional
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -35,3 +36,10 @@ class Job(Base):
     
     # Relationships
     user = relationship("User", back_populates="jobs")
+
+    @property
+    def processing_time_seconds(self) -> Optional[int]:
+        if not self.started_at or not self.completed_at:
+            return None
+        delta = self.completed_at - self.started_at
+        return int(delta.total_seconds())

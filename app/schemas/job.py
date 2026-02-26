@@ -1,6 +1,7 @@
 """Job schemas."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
+from pydantic import ConfigDict
 from typing import Optional, List, Dict
 from datetime import datetime
 from app.models import JobStatus
@@ -33,9 +34,22 @@ class JobResponse(BaseModel):
     updated_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(return_type=Optional[int])
+    @property
+    def processing_time_seconds(self) -> Optional[int]:
+        if not self.started_at or not self.completed_at:
+            return None
+        delta = self.completed_at - self.started_at
+        return int(delta.total_seconds())
+
+    @computed_field(return_type=Optional[int])
+    @property
+    def preprocessing_file_count(self) -> Optional[int]:
+        if not self.input_files:
+            return None
+        return len(self.input_files)
 
 
 class JobUpdate(BaseModel):
