@@ -1,116 +1,88 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File as FastAPIFile
+"""
+Preprocessing routes (Controller layer).
+Handles HTTP requests and delegates business logic to services.
+Follows SOLID principles - Single Responsibility (routing only).
+"""
+
+from fastapi import APIRouter, Depends, status, UploadFile, File as FastAPIFile
 from sqlalchemy.orm import Session
 from typing import List
-from app.database import get_db
-from app.models import User, Job, File, JobStatus
+
+from app.core.database import get_db
+from app.models import User
 from app.schemas import UploadResponse
-from app.auth import get_current_user
+from app.core.auth import get_current_user
+from app.services.job_service import JobService
+from app.services.file_service import FileService
 from app.tasks.preprocess_tasks import preprocess_pipeline_task
-from app.config import settings
-import uuid
-import os
-import aiofiles
+from app.core.constants import APIEndpoints, HTTPStatusMessages, JobConstants, EndpointDocs
 
-router = APIRouter(prefix="/preprocess", tags=["Preprocessing"])
+router = APIRouter(prefix=APIEndpoints.PREPROCESS_PREFIX, tags=["Preprocessing"])
 
 
-async def save_upload_file(upload_file: UploadFile, destination: str) -> int:
-    """Save uploaded file to destination and return file size."""
-    os.makedirs(os.path.dirname(destination), exist_ok=True)
-    
-    file_size = 0
-    async with aiofiles.open(destination, 'wb') as f:
-        while chunk := await upload_file.read(8192):
-            await f.write(chunk)
-            file_size += len(chunk)
-    
-    return file_size
-
-
-@router.post("/upload", response_model=UploadResponse)
+@router.post(
+    APIEndpoints.PREPROCESS_UPLOAD,
+    response_model=UploadResponse,
+    summary=EndpointDocs.PREPROCESS_UPLOAD_SUMMARY,
+    description=EndpointDocs.PREPROCESS_UPLOAD_DESC
+)
 async def upload_and_preprocess(
     files: List[UploadFile] = FastAPIFile(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
-    """Upload MRI files and start preprocessing."""
-    if not files:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No files provided"
-        )
+) -> UploadResponse:
+    """
+    Upload MRI files and start preprocessing.
     
-    # Validate file extensions
-    for file in files:
-        if not (file.filename.endswith('.nii') or 
-                file.filename.endswith('.nii.gz') or 
-                file.filename.endswith('.gz')):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type: {file.filename}. Only NIfTI files are supported."
-            )
+    Args:
+        files: List of uploaded NIfTI files
+        db: Database session
+        current_user: Authenticated user
+        
+    Returns:
+        Upload response with job ID and status
+        
+    Raises:
+        ValidationException: If no files provided or invalid file types
+        FileTooLargeException: If file size exceeds limit
+    """
+    # Initialize services
+    job_service = JobService(db)
+    file_service = FileService(db)
     
-    # Create job
-    job_id = str(uuid.uuid4())
-    job = Job(
-        id=job_id,
-        user_id=current_user.id,
-        status=JobStatus.PENDING,
-        job_type="preprocess",
-        progress=0
+    # Create preprocessing job
+    job = job_service.create_job(
+        user=current_user,
+        job_type=JobConstants.JOB_TYPE_PREPROCESS
     )
     
-    db.add(job)
-    db.commit()
-    
-    # Save uploaded files
-    file_paths = []
-    file_records = []
-    
-    for upload_file in files:
-        file_id = str(uuid.uuid4())
-        filename = f"{file_id}_{upload_file.filename}"
-        file_path = os.path.join(settings.UPLOAD_DIR, current_user.id, filename)
-        
-        # Save file
-        file_size = await save_upload_file(upload_file, file_path)
-        
-        # Check file size
-        if file_size > settings.MAX_UPLOAD_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File too large: {upload_file.filename}"
-            )
-        
-        # Create file record
-        file_record = File(
-            id=file_id,
-            user_id=current_user.id,
-            job_id=job_id,
-            filename=filename,
-            original_filename=upload_file.filename,
-            file_path=file_path,
-            file_size=file_size,
-            file_type="input"
+    try:
+        # Save uploaded files and create file records
+        file_paths, file_ids = await file_service.save_uploaded_files(
+            files=files,
+            user=current_user,
+            job_id=job.id
         )
         
-        db.add(file_record)
-        file_paths.append(file_path)
-        file_records.append(file_id)
+        # Update job with input file paths
+        job.input_files = file_paths
+        db.commit()
+        
+        # Trigger Celery preprocessing task
+        job_service.trigger_celery_task(
+            job=job,
+            task_function=preprocess_pipeline_task,
+            args=[job.id, file_paths],
+            queue=JobConstants.QUEUE_PREPROCESSING
+        )
+        
+        return UploadResponse(
+            job_id=job.id,
+            message=f"{HTTPStatusMessages.UPLOAD_SUCCESS}. {HTTPStatusMessages.PREPROCESSING_STARTED}.",
+            files_uploaded=len(files)
+        )
     
-    # Update job with input files
-    job.input_files = file_paths
-    db.commit()
-    
-    # Trigger Celery task
-    preprocess_pipeline_task.apply_async(
-        args=[job_id, file_paths],
-        task_id=job_id,
-        queue='preprocessing'
-    )
-    
-    return {
-        "job_id": job_id,
-        "message": "Files uploaded successfully. Preprocessing started.",
-        "files_uploaded": len(files)
-    }
+    except Exception as e:
+        # If anything fails, clean up the job
+        job_service.delete_job(job.id, current_user)
+        raise

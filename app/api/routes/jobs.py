@@ -1,113 +1,161 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+"""
+Job routes (Controller layer).
+Handles HTTP requests and delegates business logic to JobService.
+Follows SOLID principles - Single Responsibility (routing only).
+"""
+
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
-from typing import List
-from app.database import get_db
-from app.models import User, Job, JobStatus
-from app.schemas import JobResponse
-from app.auth import get_current_user
+from typing import List, Dict, Any
+
+from app.core.database import get_db
+from app.models import User, JobStatus
+from app.schemas import JobResponse, JobListResponse
+from app.core.auth import get_current_user
+from app.services.job_service import JobService
 from app.tasks.preprocess_tasks import preprocess_pipeline_task
 from app.tasks.inference_tasks import inference_task
+from app.utils.exceptions import InvalidJobStateException
+from app.core.constants import APIEndpoints, ErrorMessages, EndpointDocs
 
-router = APIRouter(prefix="/jobs", tags=["Jobs"])
+router = APIRouter(prefix=APIEndpoints.JOBS_PREFIX, tags=["Jobs"])
 
 
-@router.get("", response_model=List[JobResponse])
+@router.get(
+    APIEndpoints.JOBS_LIST,
+    response_model=JobListResponse,
+    summary=EndpointDocs.JOBS_LIST_SUMMARY,
+    description=EndpointDocs.JOBS_LIST_DESC
+)
 async def list_jobs(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """List all jobs for current user."""
-    jobs = db.query(Job).filter(
-        Job.user_id == current_user.id
-    ).order_by(Job.created_at.desc()).all()
+    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    size: int = Query(20, ge=1, le=100, description="Page size")
+) -> JobListResponse:
+    """
+    List all jobs for current user.
     
-    return jobs
+    Args:
+        db: Database session
+        current_user: Authenticated user
+        
+    Returns:
+        List of jobs
+    """
+    job_service = JobService(db)
+    result = job_service.get_user_jobs_paginated(current_user, page, size)
+    return JobListResponse(**result)
 
 
-@router.get("/{job_id}", response_model=JobResponse)
+@router.get(
+    APIEndpoints.JOBS_DETAIL,
+    response_model=JobResponse,
+    summary=EndpointDocs.JOBS_GET_SUMMARY,
+    description=EndpointDocs.JOBS_GET_DESC
+)
 async def get_job(
     job_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
-    """Get job details by ID."""
-    job = db.query(Job).filter(
-        Job.id == job_id,
-        Job.user_id == current_user.id
-    ).first()
+) -> JobResponse:
+    """
+    Get job details by ID.
     
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
-        )
-    
+    Args:
+        job_id: Job identifier
+        db: Database session
+        current_user: Authenticated user
+        
+    Returns:
+        Job details
+        
+    Raises:
+        ResourceNotFoundException: If job not found
+        ForbiddenException: If user doesn't own the job
+    """
+    job_service = JobService(db)
+    job = job_service.get_job_by_id(job_id, current_user)
     return job
 
 
-@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    APIEndpoints.JOBS_DELETE,
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary=EndpointDocs.JOBS_DELETE_SUMMARY,
+    description=EndpointDocs.JOBS_DELETE_DESC
+)
 async def delete_job(
     job_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
-    """Delete a job and its associated files."""
-    job = db.query(Job).filter(
-        Job.id == job_id,
-        Job.user_id == current_user.id
-    ).first()
+) -> None:
+    """
+    Delete a job and its associated files.
     
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
-        )
-    
-    # TODO: Delete associated files from storage
-    
-    db.delete(job)
-    db.commit()
-    
+    Args:
+        job_id: Job identifier
+        db: Database session
+        current_user: Authenticated user
+        
+    Raises:
+        ResourceNotFoundException: If job not found
+        ForbiddenException: If user doesn't own the job
+    """
+    job_service = JobService(db)
+    job_service.delete_job(job_id, current_user)
     return None
 
 
-@router.post("/{job_id}/trigger")
+@router.post(
+    APIEndpoints.JOBS_TRIGGER,
+    summary=EndpointDocs.JOBS_TRIGGER_SUMMARY,
+    description=EndpointDocs.JOBS_TRIGGER_DESC
+)
 async def trigger_job(
     job_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
-    """Manually trigger a job that's stuck in PENDING status."""
-    job = db.query(Job).filter(
-        Job.id == job_id,
-        Job.user_id == current_user.id
-    ).first()
+) -> Dict[str, Any]:
+    """
+    Manually trigger a job that's stuck in PENDING status.
     
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
-        )
+    Args:
+        job_id: Job identifier
+        db: Database session
+        current_user: Authenticated user
+        
+    Returns:
+        Status message and job information
+        
+    Raises:
+        ResourceNotFoundException: If job not found
+        InvalidJobStateException: If job has no input files
+    """
+    job_service = JobService(db)
+    job = job_service.get_job_by_id(job_id, current_user)
     
-    if job.status != JobStatus.PENDING:
+    # Check if job can be triggered
+    if not job_service.can_trigger_job(job):
         return {
             "message": f"Job is already {job.status.value}",
             "job_id": job_id,
             "current_status": job.status.value
         }
     
-    # Re-trigger the appropriate task
+    # Validate input files exist
+    if not job.input_files:
+        raise InvalidJobStateException(
+            ErrorMessages.NO_INPUT_FILES
+        )
+    
+    # Trigger appropriate task based on job type
     if job.job_type == "preprocess":
-        if not job.input_files:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No input files found for this job"
-            )
-        
-        preprocess_pipeline_task.apply_async(
-            args=[job_id, job.input_files],
-            task_id=job_id,
-            queue='preprocessing'
+        job_service.trigger_celery_task(
+            job,
+            preprocess_pipeline_task,
+            [job_id, job.input_files],
+            'preprocessing'
         )
         return {
             "message": "Preprocessing task triggered",
@@ -116,16 +164,11 @@ async def trigger_job(
         }
     
     elif job.job_type == "inference":
-        if not job.input_files:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No input files found for this job"
-            )
-        
-        inference_task.apply_async(
-            args=[job_id, job.input_files],
-            task_id=job_id,
-            queue='inference'
+        job_service.trigger_celery_task(
+            job,
+            inference_task,
+            [job_id, job.input_files],
+            'inference'
         )
         return {
             "message": "Inference task triggered",

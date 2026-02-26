@@ -1,47 +1,24 @@
-from pydantic import BaseModel, EmailStr
+"""Job schemas."""
+
+from pydantic import BaseModel, computed_field
+from pydantic import ConfigDict
 from typing import Optional, List, Dict
 from datetime import datetime
 from app.models import JobStatus
 
 
-# User Schemas
-class UserBase(BaseModel):
-    email: EmailStr
-    name: str
-
-
-class UserCreate(UserBase):
-    password: str
-
-
-class UserResponse(UserBase):
-    id: str
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-# Job Schemas
 class JobBase(BaseModel):
+    """Base job schema."""
     job_type: str
 
 
 class JobCreate(JobBase):
+    """Schema for creating a job."""
     input_files: List[str]
 
 
 class JobResponse(BaseModel):
+    """Schema for job response."""
     id: str
     user_id: str
     status: JobStatus
@@ -57,12 +34,35 @@ class JobResponse(BaseModel):
     updated_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(return_type=Optional[int])
+    @property
+    def processing_time_seconds(self) -> Optional[int]:
+        if not self.started_at or not self.completed_at:
+            return None
+        delta = self.completed_at - self.started_at
+        return int(delta.total_seconds())
+
+    @computed_field(return_type=Optional[int])
+    @property
+    def preprocessing_file_count(self) -> Optional[int]:
+        if not self.input_files:
+            return None
+        return len(self.input_files)
+
+
+class JobListResponse(BaseModel):
+    """Schema for paginated job list response."""
+    items: List[JobResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
 
 
 class JobUpdate(BaseModel):
+    """Schema for updating a job."""
     status: Optional[JobStatus] = None
     progress: Optional[int] = None
     error_message: Optional[str] = None
@@ -70,28 +70,3 @@ class JobUpdate(BaseModel):
     lr_file_url: Optional[str] = None
     hr_file_url: Optional[str] = None
     metrics: Optional[Dict[str, float]] = None
-
-
-# File Schemas
-class FileResponse(BaseModel):
-    id: str
-    filename: str
-    original_filename: str
-    file_size: int
-    file_type: str
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-# Upload Response
-class UploadResponse(BaseModel):
-    job_id: str
-    message: str
-    files_uploaded: int
-
-
-# Inference Request
-class InferenceRequest(BaseModel):
-    lr_file_id: str

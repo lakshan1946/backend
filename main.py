@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.config import settings
-from app.database import engine, Base
+from app.core.config import settings
+from app.core.database import engine, Base
 from app.api.routes import auth, preprocess, jobs, inference
+from app.middleware import add_exception_handlers
+from app.core.constants import APIEndpoints
 import os
 
 # Create database tables
@@ -23,6 +25,9 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
+# Add global exception handlers (middleware for error handling)
+add_exception_handlers(app)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -33,10 +38,10 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/api")
-app.include_router(preprocess.router, prefix="/api")
-app.include_router(jobs.router, prefix="/api")
-app.include_router(inference.router, prefix="/api")
+app.include_router(auth.router, prefix=APIEndpoints.API_PREFIX)
+app.include_router(preprocess.router, prefix=APIEndpoints.API_PREFIX)
+app.include_router(jobs.router, prefix=APIEndpoints.API_PREFIX)
+app.include_router(inference.router, prefix=APIEndpoints.API_PREFIX)
 
 # Mount static files for serving outputs
 if os.path.exists(settings.OUTPUT_DIR):
